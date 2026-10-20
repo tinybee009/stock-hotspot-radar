@@ -1,5 +1,12 @@
-from fastapi.testclient import TestClient
+import os
+from fastapi.testclient import TestClient as BaseClient
 from app.main import create_app
+
+
+def TestClient(app):
+    client = BaseClient(app, headers={"Origin": os.environ["RADAR_ORIGIN"]})
+    client.auth = (os.environ["RADAR_USERNAME"], os.environ["RADAR_PASSWORD"])
+    return client
 
 
 def test_market_contract_and_ranking(tmp_path):

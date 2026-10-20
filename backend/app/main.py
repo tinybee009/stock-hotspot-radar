@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.staticfiles import StaticFiles
+from .security import install_security
 from pydantic import BaseModel, Field
 
 from .market import MarketProvider, MockMarketProvider
@@ -16,6 +18,7 @@ class WatchlistInput(BaseModel):
 
 def create_app(db_path: str | Path | None = None, provider: MarketProvider | None = None) -> FastAPI:
     app = FastAPI(title="A股热点雷达", version="0.1.0")
+    install_security(app)
     path = Path(db_path or os.getenv("RADAR_DB_PATH", "data/radar.sqlite3"))
     path.parent.mkdir(parents=True, exist_ok=True)
     market = provider or MockMarketProvider()
@@ -70,7 +73,7 @@ def create_app(db_path: str | Path | None = None, provider: MarketProvider | Non
             conn.execute("DELETE FROM watchlist WHERE code=?", (code,))
         return Response(status_code=204)
 
+    static_dir = Path(os.getenv("RADAR_STATIC_DIR", str(Path(__file__).resolve().parents[2] / "frontend" / "dist")))
+    if static_dir.is_dir():
+        app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
     return app
-
-
-app = create_app()
