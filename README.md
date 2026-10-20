@@ -1,78 +1,79 @@
 # A股热点雷达 · Stock Hotspot Radar
 
-FastAPI + React / TypeScript + SQLite 的个人行情观察台。当前所有行情均为**模拟数据**，页面明确标注，不代表实时行情，不构成投资建议。
+FastAPI + React / TypeScript 的个人行情观察台，支持热点板块排行、领涨股、自选股增删及更新时间。当前价格与涨幅均为**模拟数据**，不代表实时行情，不构成投资建议。
 
-支持热点板块排行、板块领涨股、自选股增删和持久化、北京时间更新提示。真实行情可实现 `backend/app/market.py` 中的 `MarketProvider.snapshot()` 并注入 `create_app(provider=...)`。
+## 免费在线方案
 
-## 推荐在线方案：Render 单个付费 Web Service + 持久磁盘
+**Render 免费 Web Service + Turso 免费数据库**。FastAPI 在同一个 HTTPS 网址提供编译后的 React 页面和业务接口，Turso 独立保存自选股。GitHub 仓库保持私有，不需要在自己的电脑运行。
 
-前后端打包为一个 Docker 服务：FastAPI 同时提供 React 构建文件和 `/api`，同一个 HTTPS 域名。无需单独购买数据库或配置跨域。
+- Render 选择 **Free**，不添加付费磁盘。免费实例可能休眠，第一次打开会等待冷启动；额度及可用性以注册时的官方页面为准。
+- Turso 选择当时提供的免费套餐，数据使用独立数据库保存。不要升级付费套餐或启用自动付费；如果控制台不再提供免费选项，先停止创建。
+- 免费不等于无限量或永久保证。达到额度、令牌失效或数据库暂停时，程序返回错误，**不会退回临时 SQLite 保存数据**。
+- 免费服务的本地文件可能随发布丢失，因此线上镜像默认 `RADAR_STORAGE=turso`，不使用本地磁盘保存自选。
+- 尚未部署外部网站。官方套餐信息请在 <https://render.com/pricing> 和 <https://turso.tech/pricing> 核对，当前环境未能在线核实最新免费额度。
 
-| 方案 | 费用估算 | SQLite 持久化 | 配置难度 |
-| --- | --- | --- | --- |
-| Render 付费 Web Service + 磁盘（推荐） | Starter 约 US$7/月，1 GB 磁盘约 US$0.25/月，另可能有税费/超额用量 | 将磁盘挂载到 `/var/data` | 低，GitHub 私有仓库集成及托管 HTTPS |
-| Railway 服务 + Volume | 通常从约 US$5/月套餐起，计算与存储按用量，可能超出包含额度 | 必须挂载 Volume | 较低，费用随使用变化 |
-| 自管 VPS | 常见约 US$5–10/月起，备份/域名可能另计 | 云主机磁盘及独立备份 | 高，需管理 HTTPS、系统补丁及防火墙 |
+## 第一步：在 Turso 创建数据库（仅需网页）
 
-以上为预算参考，当前环境无法访问官方页面核实最新价格，请以购买页面为准。官方资料：<https://render.com/pricing>、<https://render.com/docs/disks>、<https://docs.railway.com/reference/pricing/plans>。
+进入你的组织控制台，例如 <https://app.turso.tech/bobchen>。组织页面链接不是数据库连接地址。
 
-不推荐无持久磁盘的免费实例，也不适合把此 SQLite 文件放到会随发布重置的文件系统。当前必须单实例、单 worker；磁盘方案更新时可能短暂中断。暂未执行任何外部部署。
+1. 在 Databases 页面选择创建数据库（界面可能显示 Create Database / New Database）。名称可用 `stock-hotspot-radar`，选择免费套餐支持的区域。
+2. 打开数据库详情，在连接信息中找到 **Database URL**，一般类似 `libsql://数据库名-组织名.turso.io`。此地址不含密码，可以单独提供用于配置检查。
+3. 在该数据库的连接/令牌区域生成 **数据库 Auth Token**。应用需要建表和读写权限；不要使用只能读的令牌，也不需要组织管理员 API 令牌。
+4. 将令牌暂存在自己的密码管理器，随后直接填入 Render 的 Secret 环境变量 `TURSO_AUTH_TOKEN`。不要发到聊天、粘贴到源码或上传 GitHub。
+5. 不用手工创建表，应用首次成功连接后会执行 `CREATE TABLE IF NOT EXISTS`，不会删除已有列表。选择有明确有效期的令牌时，记录到期时间并提前轮换。
 
-## 访问保护
+## 第二步：准备 Render 服务（创建前先核对配置）
 
-- 所有页面、JS/CSS 静态资源、API、健康检查和接口文档入口统一经过服务器端 HTTP Basic 身份校验；没有公开业务接口，没有注册入口。
-- 首次打开网站，浏览器弹出用户名/密码输入框。只有知道站点唯一账号密码的人能使用。建议使用密码管理器生成至少 24 字符随机密码；程序最低要求 16 字符。
-- 凭据仅通过环境变量读取，没有默认账号密码；缺少配置会拒绝启动。测试密码每次随机生成，不是真实凭据。
-- 正式访问必须使用平台提供的 HTTPS。Basic 认证是编码而非加密，依赖 TLS；不要在 URL 中拼接用户名密码，不把 Authorization 请求头写入日志。
-- 浏览器会缓存 Basic 凭据；此版本没有自定义登录页面、退出按钮或 MFA。推荐在个人电脑的独立隐私窗口使用，用完关闭全部隐私窗口。改密码并重新部署可使旧密码失效。
-- 写操作校验 Origin，拒绝跨站或缺失来源的请求；响应禁止缓存、嵌入和外部脚本。每个进程一分钟最多允许 20 次错误密码尝试，之后临时返回 429。限流保存在内存，重启会重置；它不是平台级防攻击服务。
+注册/登录 Render，通过 GitHub 授权只允许访问私有仓库 `tinybee009/stock-hotspot-radar`。新建 Web Service：
 
-## 部署前需要在 Render 设置的环境变量
-
-| 名称 | 配置方式 |
+| 项目 | 配置 |
 | --- | --- |
-| `RADAR_USERNAME` | 你选择的唯一用户名，不能包含冒号 |
-| `RADAR_PASSWORD` | 在平台 Secret/环境变量编辑器输入随机长密码，不要在聊天或 Git 提交中填写 |
-| `RADAR_ORIGIN` | 平台分配的正式源地址，例如 `https://你的服务名.onrender.com`，无路径；修改域名后同步修改 |
-| `RADAR_DB_PATH` | `/var/data/radar.sqlite3`（镜像默认值） |
-| `RADAR_STATIC_DIR` | `/app/static`（镜像默认值） |
+| Repository | `tinybee009/stock-hotspot-radar` |
+| Branch | `feat/stock-hotspot-radar-v1` |
+| Runtime | Docker |
+| Dockerfile | 仓库根目录的 `./Dockerfile` |
+| Instance Type | **Free** |
+| Persistent Disk | **不添加** |
+| Auto Deploy | 关闭，后续由你手动确认更新 |
+| Instances / Workers | 1 / 1（Dockerfile 已指定） |
+| Start Command | 使用 Dockerfile 默认值，不要运行 Vite 开发服务器 |
+| Health Check | 默认 TCP 检查；不要添加无需登录的业务健康检查 |
 
-当前模拟行情不需要任何行情 API 密钥。未来密钥同样只在平台环境变量中设置，不要使用会暴露给浏览器的 `VITE_` 变量保存密钥。
+环境变量如下，密码和令牌仅在平台设置中输入，不提交到 Git：
 
-## 由你操作的 Render 部署步骤（会产生费用，尚未执行）
+| 名称 | 值/说明 |
+| --- | --- |
+| `RADAR_STORAGE` | `turso`（镜像默认值） |
+| `TURSO_DATABASE_URL` | 从 Turso 复制的数据库 URL，支持 `libsql://` 或 `https://`，域名为 `*.turso.io` |
+| `TURSO_AUTH_TOKEN` | 该数据库的读写令牌，设为 Secret |
+| `RADAR_USERNAME` | 你选择的唯一用户名，不包含冒号 |
+| `RADAR_PASSWORD` | 密码管理器生成的随机长密码，建议至少24字符，程序最低要求16字符，设为 Secret |
+| `RADAR_ORIGIN` | 最终站点源地址，如 `https://你的服务名.onrender.com`，不要包含路径 |
 
-1. 注册/登录 Render，连接 GitHub，仅授权私有仓库 `tinybee009/stock-hotspot-radar`；保持 GitHub 仓库 Private。
-2. 新建 Web Service，选择该仓库和开发分支 `feat/stock-hotspot-radar-v1`。使用 Docker，仓库根目录为构建上下文，Dockerfile 路径为 `./Dockerfile`，选择可挂载磁盘的付费规格，实例数为 1。
-3. 在首次启动之前添加持久磁盘：挂载路径 `/var/data`，初始容量 1 GB。设置上表环境变量。不要选择临时目录。平台若先显示源地址，用它填写 `RADAR_ORIGIN`；不确定时先不触发创建/部署。
-4. 关闭自动部署，后续由你手动确认更新。启动命令使用 Dockerfile 默认值：一个 Uvicorn worker，监听平台 `PORT`。
-5. 健康检查使用平台默认 TCP 检查，不配置未经认证的 HTTP `/api/health` 检查，因为该接口也需要登录。若平台界面不支持 TCP 检查，请先确认该平台的健康检查认证能力，不要移除业务认证来绕过检查。
-6. 核对月费、磁盘、环境变量后，再点击创建/部署。此步骤才会创建外部可访问地址；没有登录不能读取页面或业务数据。
-7. 部署成功后访问平台提供的 **HTTPS** 地址，在浏览器提示中输入你设置的账号密码。验证模拟数据标签、添加自选并刷新、删除自选。
-8. 验证一次更新：保留一只自选股，手动重新部署同一个服务、保留同一块磁盘，然后确认该自选股仍在。未经这一步不能宣称云端持久化已验证。
+Render 若在创建后才分配网址，可先将 `RADAR_ORIGIN` 留空：程序会拒绝启动，而不会开放无认证页面。取得最终网址后补齐变量，再手动部署。所有必要配置正确后，只有在你决定上线时才点击创建/部署；这一步会产生外部网址。若页面要求购买服务或不提供 Free，请停止，不要选择付费替代。
 
-## 数据持久化与备份
+平台若要求 HTTP 健康检查成功而不能使用 TCP，请先确认其认证检查能力；不要为健康检查移除业务认证。
 
-SQLite 仅保存自选股票代码和名称，不保存登录密码。程序只会 `CREATE TABLE IF NOT EXISTS`，不会在启动时删除或初始化已有列表。更新镜像不会覆盖挂载磁盘。
+## 登录保护与上线验证
 
-必须持续保留**同一服务及同一持久磁盘**。删除服务/磁盘、换挂载路径或换平台都可能丢失数据；磁盘持久化不等于备份。建议定期在平台私有 Shell 使用 SQLite 在线备份 API 生成一致性备份，再下载到你控制的私有位置：
+- 浏览器首次打开 HTTPS 网址会弹出账号密码框，只有站点唯一账号可用，没有注册入口。页面、JS/CSS、业务 API 及文档入口全部经过身份校验。
+- 仅通过 HTTPS 使用。Basic 认证本身是编码，不是加密；不要把凭据写在 URL 中，也不要记录 Authorization 请求头。
+- 浏览器缓存 Basic 凭据，没有自定义退出按钮或 MFA。建议通过独立隐私窗口使用，用完关闭全部隐私窗口；更换密码并重新部署会使旧密码失效。
+- 缺少凭据会拒绝启动；写请求校验 Origin；响应禁止缓存、嵌入和外部脚本。每进程每分钟20次错误密码后临时限流，重启会重置。
+- 发布后先用新隐私窗口确认未登录无法读取页面；登录后确认模拟标签、切换板块、自选添加和删除。
+- 添加一只自选股后，保留同一个 Turso 数据库，手动更新/重启 Render，确认自选仍在。只有完成这一步，才算验证实际云端持久化。
 
-```bash
-python - <<'PY'
-import os
-import sqlite3
-from datetime import datetime, timezone
-stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-with sqlite3.connect(os.environ['RADAR_DB_PATH']) as source:
-    with sqlite3.connect('/var/data/radar-backup-' + stamp + '.sqlite3') as target:
-        source.backup(target)
-PY
-```
+## 持久化、备份及迁移
 
-同盘备份不能抵御磁盘删除，务必保留盘外副本。恢复前停止服务，备份当前文件，再用已验证的备份替换数据库，启动后检查自选。不要把备份上传 GitHub。
+更新镜像、重启或更换 Render 实例不会重置独立的 Turso 数据库。但**删除 Turso 数据库、换数据库 URL 或账户问题仍可能丢失访问或数据**。不要在每次发布时创建新数据库。
 
-## 开发与测试
+在 Turso 控制台查看当前免费套餐可用的备份/导出功能，定期导出 SQL 并保存在你控制的私有位置；不要假定免费套餐包含自动备份，不要把备份提交 GitHub。旧版本本地 SQLite 的自选不会自动复制到 Turso；当前仅有代码测试数据。若已有个人数据，迁移前先备份并另外安排导入。
 
-Python 3.12、Node.js 22+。从仓库根目录执行：
+## 实现与开发测试
+
+`backend/app/storage.py` 封装存储：`RADAR_STORAGE=sqlite` 用于本地测试，`turso` 通过 HTTPS `/v2/pipeline` 使用参数化 SQL、认证令牌和请求超时。上游错误转换为不包含令牌或响应正文的 503；不会把失败读写当作成功。
+
+Python 3.12、Node.js 22+，从仓库根目录执行（仅供开发者，不要求使用者本机运行）：
 
 ```bash
 python -m venv .venv
@@ -84,10 +85,10 @@ cd ../backend
 ../.venv/bin/python -m pytest -q
 ```
 
-测试覆盖认证拦截（页面/静态资源/API）、错误密码限流、来源检查、缺少凭据拒绝启动、行情排序、自选去重/删除及重建应用后的数据保留。已通过 7 项核心测试、前端类型检查和构建，并验证实际进程重启后的 SQLite 持久化。当前云环境的 Docker 容器无法解析依赖站点域名，完整镜像构建未通过验证；需在有正常构建网络的平台复核。浏览器 UI 自动化、正式 HTTPS 登录及真实云端发布/挂载磁盘尚未验证。
+测试包含登录隔离、来源校验、缺少配置拒绝启动、本地持久化、Turso HTTP 协议模拟、参数绑定与去重、跨存储实例持久化、网络/SQL/认证错误脱敏、禁止临时文件回退。
 
-生产使用 Dockerfile 构建镜像；本地调试也需要配置认证环境变量，并用受控 HTTPS 代理提供与 `RADAR_ORIGIN` 一致的入口。旧版本的无认证 Vite 开发页面不应作为部署入口，禁止将 Vite dev/preview 暴露到公网。
+**验证边界：**Turso 测试使用模拟 HTTP 传输和独立 SQLite 文件，不等同于真实 Turso 连通验证。真实数据库、正式 HTTPS 登录、Render 更新后的数据保存仍需配置后验证。此前 Docker 构建受当前云环境容器 DNS 故障阻塞；前端构建和 Python 测试可以在当前机器执行。
 
-API：`GET /api/health`、`GET /api/market`、`GET /api/watchlist`、`POST /api/watchlist`（请求体 `{"code":"002230"}`）、`DELETE /api/watchlist/{code}`，均需认证。非浏览器写请求还须携带与 `RADAR_ORIGIN` 一致的 `Origin` 请求头。模拟版本只支持页面中的八只股票。
+行情接入边界在 `backend/app/market.py` 的 `MarketProvider.snapshot()`。行情 API 密钥只能通过服务端环境变量注入，不能放进 `VITE_` 前端变量。
 
-代码存于 GitHub 私有开发分支，不要提交 `.env*`、数据库、依赖目录、备份或密钥。不会自动更改仓库可见性或启用公开部署。
+所有 API 均需认证：`GET /api/health`、`GET /api/market`、`GET /api/watchlist`、`POST /api/watchlist`（`{"code":"002230"}`）、`DELETE /api/watchlist/{code}`。非浏览器写操作还须携带与 `RADAR_ORIGIN` 相同的 Origin 请求头。模拟版本只支持页面列出的八只股票。

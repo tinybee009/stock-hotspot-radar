@@ -45,11 +45,11 @@ function App() {
     </section><section><div className="section-title"><h2>{sector?.name ?? '板块'} · 领涨股</h2><span>点击板块切换</span></div>
       <div className="table-wrap"><table><thead><tr><th>股票</th><th>价格（元）</th><th>涨跌幅</th><th>操作</th></tr></thead><tbody>{sector?.stocks.map(s => <tr key={s.code}><td><strong>{s.name}</strong><small>{s.code}</small></td><td>{s.price.toFixed(2)}</td><td className="up">{gain(s.change_pct)}</td><td><button disabled={pending || watchlist.some(w => w.code === s.code)} onClick={() => void changeStock(s.code)}>{watchlist.some(w => w.code === s.code) ? '已添加' : '+ 自选'}</button></td></tr>)}</tbody></table></div>
     </section></div>
-    <section className="watch"><div className="section-title"><h2>我的自选 <span className="count">{watchlist.length}</span></h2><span>自动保存到 SQLite，刷新仍保留</span></div>
+    <section className="watch"><div className="section-title"><h2>我的自选 <span className="count">{watchlist.length}</span></h2><span>自动保存，刷新仍保留</span></div>
       <form onSubmit={e => { e.preventDefault(); void changeStock(code); }}><label htmlFor="stock-code">股票代码</label><input id="stock-code" placeholder="输入页面中的六位股票代码" value={code} onChange={e => setCode(e.target.value)} pattern="[0-9]{6}" required maxLength={6}/><button disabled={pending || loading}>添加自选</button></form>
       <div className="saved-list">{watchlist.map(s => <div className="saved" key={s.code}><div><strong>{s.name}</strong><small>{s.code}</small></div><button disabled={pending} onClick={() => void changeStock(s.code, true)} aria-label={`删除${s.name}`}>删除</button></div>)}</div>
       {!watchlist.length && <p className="empty">还没有自选股，从领涨股列表添加第一只吧。</p>}
-    </section><footer>Stock Hotspot Radar · 模拟数据版本 · 自选列表为本地实例共享数据</footer>
+    </section><footer>Stock Hotspot Radar · 模拟数据版本 · 个人自选 · 登录后使用</footer>
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
